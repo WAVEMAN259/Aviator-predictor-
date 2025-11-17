@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Predictify</title>
+<style>
+  body {
+    font-family: 'Segoe UI', sans-serif;
+    margin:0; height:100vh;
+    overflow:hidden;
+    display:flex; align-items:center; justify-content:center;
+    background:#fff;
+  }
+  .static-bg{
+    position:fixed; top:0; left:0;
+    width:100%; height:100%;
+    background:white; z-index:0;
+  }
+  .rotating-earth{
+    position:fixed; top:50%; left:50%;
+    width:650px; height:650px;
+    background:url('https://upload.wikimedia.org/wikipedia/commons/2/2c/Rotating_earth_(large).gif') no-repeat center center;
+    background-size:contain;
+    transform:translate(-50%,-50%);
+    animation:spinEarth 120s linear infinite;
+    opacity:0.9;
+    filter:brightness(1.3) contrast(1.2) saturate(1.3);
+    z-index:0;
+  }
+  @keyframes spinEarth {
+    from{transform:translate(-50%,-50%) rotate(0deg);}
+    to{transform:translate(-50%,-50%) rotate(360deg);}
+  }
+  .login-container{
+    position:relative; z-index:1;
+    background:rgba(255,255,255,0.25);
+    backdrop-filter:blur(20px) saturate(200%);
+    -webkit-backdrop-filter:blur(20px) saturate(200%);
+    padding:40px; border-radius:20px; width:340px; text-align:center;
+    border:1px solid rgba(255,255,255,0.6);
+    box-shadow:0 0 25px rgba(0,0,0,0.05); color:#000;
+  }
+  h2{font-size:1.6em; margin-bottom:20px; color:#000; letter-spacing:1px; text-shadow:0 0 10px rgba(255,255,255,0.8);}
+  input,select{
+    width:100%; padding:12px; margin:10px 0; border:none; outline:none; border-radius:10px;
+    background:rgba(255,255,255,0.7); color:#000; font-size:1em; text-align:center; transition:0.3s;
+  }
+  input::placeholder{color:rgba(0,0,0,0.6);}
+  input:focus, select:focus{background:rgba(255,255,255,0.9); box-shadow:0 0 10px rgba(0,123,255,0.3);}
+  button{
+    width:100%; padding:12px; margin-top:10px; border:none; border-radius:10px;
+    background:linear-gradient(90deg,#4b0082,#8a2be2); color:white;
+    font-size:1.05em; letter-spacing:1px; cursor:pointer; transition:0.3s;
+  }
+  button:hover{background:linear-gradient(90deg,#551a8b,#9b30ff); transform:scale(1.03);}
+  footer{margin-top:18px; font-size:12px; color:rgba(0,0,0,0.6);}
+</style>
+
+<!-- Firebase SDKs -->
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+
+<script>
+const firebaseConfig = {
+  apiKey: "AIzaSyD2j0mCv2godRtmL8suKnHweYYs_lyYIRE",
+  authDomain: "jetx-414a1.firebaseapp.com",
+  databaseURL: "https://jetx-414a1-default-rtdb.firebaseio.com",
+  projectId: "jetx-414a1",
+  storageBucket: "jetx-414a1.appspot.com",
+  messagingSenderId: "386298077127",
+  appId: "1:386298077127:web:105c194590c3979371c3e2"
+};
+
+firebase.initializeApp(firebaseConfig);
+const database = firebase.database();
+
+window.onload = async function () {
+  const bettingSelect = document.getElementById("bettingSite");
+  const siteSnap = await database.ref("auth/predictify/allowedSites").get();
+
+  if (siteSnap.exists()) {
+    bettingSelect.innerHTML = "";
+    siteSnap.forEach(child => {
+      const option = document.createElement("option");
+      option.value = child.key;
+      option.textContent = child.key;
+      bettingSelect.appendChild(option);
+    });
+  } else {
+    alert("No allowed betting sites configured.");
+  }
+};
+
+async function login() {
+  const phone = document.getElementById("phone").value.trim();
+  const bettingSite = document.getElementById("bettingSite").value.trim();
+  const activeUserRef = database.ref("auth/predictify/inUse/" + phone);
+  const sound = document.getElementById("takeoff-sound");
+
+  if (!phone || !bettingSite) {
+    alert("Please fill all fields.");
+    return;
+  }
+
+  try {
+    // ✅ Check betting site allowed
+    const allowedSnap = await database.ref("auth/predictify/allowedSites/" + bettingSite).get();
+    if (!allowedSnap.exists()) { alert("This betting site is not allowed."); return; }
+
+    // ✅ Check if number is already in use
+    const activeSnap = await activeUserRef.get();
+    if (activeSnap.exists()) { alert("This number is already logged in elsewhere."); return; }
+
+    // ✅ Mark number as in use
+    await activeUserRef.set(true);
+    await activeUserRef.onDisconnect().remove();
+    localStorage.setItem("loggedInPhone", phone);
+    sound.play().catch(() => {});
+    setTimeout(() => { window.location.href = "predictify_signal.html"; }, 2000);
+
+  } catch (error) {
+    console.error(error);
+    alert("Login failed. Please try again.");
+  }
+}
+
+async function register() {
+  const phone = document.getElementById("phone").value.trim();
+  const userRef = database.ref("auth/predictify/users/" + phone);
+
+  if (!phone) { alert("Please enter your phone."); return; }
+
+  const snapshot = await userRef.get();
+  if (snapshot.exists()) { alert("Phone number already registered."); return; }
+
+  await userRef.set({ blocked: true });
+  alert("Registered successfully. Please wait for admin approval.");
+}
+
+// 🚫 Anti Inspect / DevTools
+document.addEventListener('contextmenu', event => event.preventDefault());
+document.onkeydown = function(e) {
+  if (e.keyCode === 123) return false;
+  if (e.ctrlKey && e.shiftKey && (e.keyCode === 73 || e.keyCode === 74)) return false;
+  if (e.ctrlKey && e.keyCode === 85) return false;
+};
+</script>
+</head>
+
+<body>
+<div class="static-bg"></div>
+<div class="rotating-earth"></div>
+
+<div class="login-container">
+  <h2>Login to Predictify</h2>
+  <input type="text" id="phone" placeholder="Enter Phone Number" />
+  <select id="bettingSite">
+    <option disabled selected>Loading betting sites...</option>
+  </select>
+  <button onclick="login()">Login</button>
+  <button onclick="register()">Register</button>
+  <footer>Predictify by Waveman Melch © 2025</footer>
+</div>
+
+<audio id="takeoff-sound" preload="auto">
+  <source src="https://www.fesliyanstudios.com/play-mp3/387" type="audio/mpeg" />
+</audio>
+</body>
+</html>
